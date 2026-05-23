@@ -29,9 +29,18 @@ class NotificationsScreen extends StatelessWidget {
             return const Center(child: Text("Your inbox is empty."));
           return ListView.builder(
             itemCount: snap.data!.length,
-            itemBuilder: (c, i) => ListTile(
-              leading: const Icon(Icons.notifications, color: Colors.orange),
-              title: Text(snap.data![i]['content']),
+            itemBuilder: (c, i) => Card(
+              margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+              child: ListTile(
+                leading: const Icon(Icons.notifications_active,
+                    color: Colors.orange),
+                title: const Text("System Update",
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text(snap.data![i]['content']),
+                trailing: Text(
+                    snap.data![i]['created_at'].toString().substring(5, 10),
+                    style: const TextStyle(fontSize: 10)),
+              ),
             ),
           );
         },

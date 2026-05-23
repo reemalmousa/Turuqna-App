@@ -7,8 +7,9 @@ import 'dart:io';
 import 'dart:convert';
 
 class ReportScreen extends StatefulWidget {
-  final String userId; // Added to handle real user session
+  final String userId;
   const ReportScreen({super.key, required this.userId});
+
   @override
   State<ReportScreen> createState() => _ReportScreenState();
 }
@@ -24,6 +25,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   final Color primaryTeal = const Color(0xFF1D6B60);
 
+  // EXACT DISTRICTS FROM YOUR OFFICER TABLE
   final Map<String, List<String>> locations = {
     "Dammam": [
       "Al Shatea",
@@ -63,11 +65,13 @@ class _ReportScreenState extends State<ReportScreen> {
     setState(() => _isLoading = true);
 
     try {
-      var request = http.MultipartRequest('POST',
-          Uri.parse("http://10.0.2.2:8080/turuqna_api/api_check_ai.php"));
+      // NOTE: Ensure your XAMPP port (8080 or 80) matches here
+      var url = Uri.parse("http://10.0.2.2:8080/turuqna_api/api_check_ai.php");
+      var request = http.MultipartRequest('POST', url);
+
       request.fields.addAll({
         "description": _descController.text,
-        "citizen_id": widget.userId, // Sending the REAL ID of logged in user
+        "citizen_id": widget.userId,
         "city": selectedCity!,
         "district": selectedDistrict!,
         "lat": _selectedPos.latitude.toString(),
@@ -85,29 +89,30 @@ class _ReportScreenState extends State<ReportScreen> {
             content: Text(data['message']), backgroundColor: Colors.green));
         Navigator.pop(context);
       } else {
-        _showRejection(data['message']);
+        _showRejectionDialog(data['message']);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Processing... Try clicking again.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text("Processing... wait 10 seconds and try again.")));
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  void _showRejection(String msg) {
+  void _showRejectionDialog(String message) {
     showDialog(
-        context: context,
-        builder: (ctx) =>
-            AlertDialog(
-                title:
-                    const Text("Refused", style: TextStyle(color: Colors.red)),
-                content: Text(msg),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text("OK"))
-                ]));
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Submission Refused",
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        content: Text(message),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text("OK"))
+        ],
+      ),
+    );
   }
 
   @override
@@ -116,9 +121,10 @@ class _ReportScreenState extends State<ReportScreen> {
       appBar: AppBar(
           backgroundColor: primaryTeal,
           foregroundColor: Colors.white,
-          title: const Text("Submit Traffic Report")),
+          title: const Text("New Report"),
+          elevation: 0),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(25),
+        padding: const EdgeInsets.all(25.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -138,11 +144,9 @@ class _ReportScreenState extends State<ReportScreen> {
                       onTap: (tp, p) => setState(() => _selectedPos = p)),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                      // FIXED: This line stops the Access Blocked error
-                      userAgentPackageName: 'com.graduation.turuqna',
-                    ),
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.graduation.turuqna'),
                     MarkerLayer(markers: [
                       Marker(
                           point: _selectedPos,
@@ -183,27 +187,29 @@ class _ReportScreenState extends State<ReportScreen> {
                           const InputDecoration(border: OutlineInputBorder()))),
             ]),
             const SizedBox(height: 20),
-            const Text("2. Describe traffic:",
+            const Text("2. Description:",
                 style: TextStyle(fontWeight: FontWeight.bold)),
             TextField(
                 controller: _descController,
                 maxLines: 3,
                 decoration: const InputDecoration(
-                    hintText: "Describe the traffic issue...",
+                    hintText: "Describe the traffic situation...",
                     border: OutlineInputBorder())),
             const SizedBox(height: 20),
             Row(children: [
               Expanded(
                   child: OutlinedButton.icon(
                       onPressed: () => _pickImage(ImageSource.camera),
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text("Camera"))),
+                      icon: Icon(Icons.camera_alt, color: primaryTeal),
+                      label: Text("Camera",
+                          style: TextStyle(color: primaryTeal)))),
               const SizedBox(width: 10),
               Expanded(
                   child: OutlinedButton.icon(
                       onPressed: () => _pickImage(ImageSource.gallery),
-                      icon: const Icon(Icons.image),
-                      label: const Text("Gallery"))),
+                      icon: Icon(Icons.image, color: primaryTeal),
+                      label: Text("Gallery",
+                          style: TextStyle(color: primaryTeal)))),
             ]),
             if (_imageFile != null)
               Padding(
@@ -216,22 +222,28 @@ class _ReportScreenState extends State<ReportScreen> {
                           fit: BoxFit.cover))),
             const SizedBox(height: 40),
             Center(
-                child: SizedBox(
-                    width: 250,
-                    height: 55,
-                    child: _isLoading
-                        ? const Center(child: CircularProgressIndicator())
-                        : ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                                backgroundColor: primaryTeal,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30))),
-                            onPressed: _submitReport,
-                            child: const Text("SUBMIT REPORT",
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold))))),
+              child: SizedBox(
+                width: 250,
+                height: 65,
+                child: _isLoading
+                    ? Column(children: [
+                        CircularProgressIndicator(color: primaryTeal),
+                        const Text("AI Scanning...",
+                            style: TextStyle(fontSize: 10))
+                      ])
+                    : ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: primaryTeal,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(30))),
+                        onPressed: _submitReport,
+                        child: const Text("SUBMIT REPORT",
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold))),
+              ),
+            ),
           ],
         ),
       ),

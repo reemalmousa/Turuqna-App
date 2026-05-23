@@ -7,16 +7,12 @@ void main() {
 
 class TuruqnaApp extends StatelessWidget {
   const TuruqnaApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Turuqna',
-      theme: ThemeData(
-        primaryColor: const Color(0xFF1D6B60),
-        fontFamily: 'Roboto',
-      ),
+      theme: ThemeData(primaryColor: const Color(0xFF1D6B60)),
       home: const WelcomeScreen(),
     );
   }
