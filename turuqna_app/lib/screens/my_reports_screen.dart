@@ -13,6 +13,19 @@ class MyReportsScreen extends StatelessWidget {
     return json.decode(res.body);
   }
 
+  Color _statusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return Colors.red;
+      case 'in progress':
+        return Colors.orange;
+      case 'resolved':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const Color teal = Color(0xFF1D6B60);
@@ -33,6 +46,9 @@ class MyReportsScreen extends StatelessWidget {
             itemCount: snap.data!.length,
             itemBuilder: (c, i) {
               var r = snap.data![i];
+              final status = r['status'] ?? 'Pending';
+              final statusColor = _statusColor(status);
+
               return Card(
                 margin: const EdgeInsets.all(12),
                 shape: RoundedRectangleBorder(
@@ -49,9 +65,22 @@ class MyReportsScreen extends StatelessWidget {
                               style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   color: Colors.grey)),
-                          Text(r['status'],
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: statusColor.withOpacity(0.15),
+                              border: Border.all(color: statusColor),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              status,
                               style: TextStyle(
-                                  color: teal, fontWeight: FontWeight.bold)),
+                                  color: statusColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12),
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -67,7 +96,8 @@ class MyReportsScreen extends StatelessWidget {
                       Text(
                         r['officer_comment'] ?? "Waiting for review...",
                         style: const TextStyle(
-                            fontStyle: FontStyle.italic, color: Colors.black87),
+                            fontStyle: FontStyle.italic,
+                            color: Colors.black87),
                       ),
                     ],
                   ),
