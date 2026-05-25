@@ -3,8 +3,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math';
 
 class RoadSuggestionsScreen extends StatefulWidget {
   final String userId;
@@ -18,6 +20,7 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
   final TextEditingController _descController = TextEditingController();
   File? _imageFile;
   bool _isLoading = false;
+  bool _isLocating = false;
   LatLng _selectedPos = const LatLng(26.4207, 50.0888);
   final MapController _mapController = MapController();
 
@@ -33,27 +36,96 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
   };
 
   final Map<String, LatLng> districtCoordinates = {
-    // Dammam
     "Al Shatea":     LatLng(26.478346, 50.129872),
     "Al Rayyan":     LatLng(26.413159, 50.092942),
     "Al Jamiyin":    LatLng(26.397849, 50.099695),
     "Al Faisaliyah": LatLng(26.396526, 50.071206),
     "Al Mazruiyah":  LatLng(26.448608, 50.119563),
     "Al Nuzha":      LatLng(26.401797, 50.109271),
-    // Khobar
     "Golden Belt":   LatLng(26.317119, 50.197037),
     "Al Buhairah":   LatLng(26.189997, 50.178769),
     "Corniche":      LatLng(26.332621, 50.239568),
     "Al Aqrabiyah":  LatLng(26.298660, 50.192822),
     "Al Rakah":      LatLng(26.363909, 50.272146),
     "Al Tahliyah":   LatLng(26.189394, 50.197654),
-    // Dhahran
     "Doha":          LatLng(26.338399, 50.168036),
     "Al Dana":       LatLng(26.332489, 50.149309),
     "Al Qusur":      LatLng(26.346020, 50.152107),
     "West Dhahran":  LatLng(26.315038, 50.127842),
     "Ajyal":         LatLng(26.265744, 50.074363),
   };
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _detectLocation();
+    });
+  }
+
+  double _calculateDistance(LatLng a, LatLng b) {
+    const R = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * pi / 180;
+    final dLng = (b.longitude - a.longitude) * pi / 180;
+    final x = sin(dLat / 2) * sin(dLat / 2) +
+        cos(a.latitude * pi / 180) * cos(b.latitude * pi / 180) *
+            sin(dLng / 2) * sin(dLng / 2);
+    return R * 2 * atan2(sqrt(x), sqrt(1 - x));
+  }
+
+  void _findNearestDistrict(LatLng pos) {
+    String? nearestDistrict;
+    String? nearestCity;
+    double minDistance = double.infinity;
+
+    locations.forEach((city, districts) {
+      for (final district in districts) {
+        final districtPos = districtCoordinates[district];
+        if (districtPos != null) {
+          final distance = _calculateDistance(pos, districtPos);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestDistrict = district;
+            nearestCity = city;
+          }
+        }
+      }
+    });
+
+    if (nearestDistrict != null && nearestCity != null) {
+      setState(() {
+        selectedCity = nearestCity;
+        selectedDistrict = nearestDistrict;
+      });
+    }
+  }
+
+  Future<void> _detectLocation() async {
+    setState(() => _isLocating = true);
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location permission denied")));
+        return;
+      }
+      final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+      final currentPos = LatLng(position.latitude, position.longitude);
+      setState(() => _selectedPos = currentPos);
+      _mapController.move(currentPos, 15.0);
+      _findNearestDistrict(currentPos);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not detect location")));
+    } finally {
+      setState(() => _isLocating = false);
+    }
+  }
 
   void _onDistrictSelected(String? district) {
     setState(() => selectedDistrict = district);
@@ -79,13 +151,10 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
           content: Text("Please fill all fields and add a photo")));
       return;
     }
-
     setState(() => _isLoading = true);
-
     try {
       var url = Uri.parse("http://10.0.2.2:8080/turuqna_api/api_submit_suggestion.php");
       var request = http.MultipartRequest('POST', url);
-
       request.fields.addAll({
         "description": _descController.text,
         "citizen_id": widget.userId,
@@ -94,13 +163,10 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
         "lat": _selectedPos.latitude.toString(),
         "lng": _selectedPos.longitude.toString(),
       });
-
       request.files.add(await http.MultipartFile.fromPath('image', _imageFile!.path));
-
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
       var data = json.decode(response.body);
-
       if (data['status'] == "success") {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(data['message']), backgroundColor: Colors.green));
@@ -123,7 +189,16 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
           title: const Text("Road Suggestions"),
           backgroundColor: primaryTeal,
           foregroundColor: Colors.white,
-          elevation: 0),
+          elevation: 0,
+          actions: [
+            IconButton(
+              icon: _isLocating
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Icon(Icons.my_location),
+              onPressed: _isLocating ? null : _detectLocation,
+              tooltip: "Detect my location",
+            )
+          ]),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(25),
         child: Column(
@@ -144,36 +219,41 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
                   options: MapOptions(
                       initialCenter: _selectedPos,
                       initialZoom: 13.0,
-                      onTap: (tp, p) => setState(() => _selectedPos = p)),
+                      onTap: (tp, p) {
+                        setState(() => _selectedPos = p);
+                        _findNearestDistrict(p);
+                      }),
                   children: [
                     TileLayer(
                       urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.graduation.turuqna',
                     ),
                     MarkerLayer(markers: [
-                      Marker(
-                          point: _selectedPos,
-                          child: const Icon(Icons.location_on,
-                              color: Colors.blue, size: 35))
+                      Marker(point: _selectedPos, child: const Icon(Icons.location_on, color: Colors.blue, size: 35))
                     ])
                   ],
                 ),
               ),
             ),
+            if (_isLocating)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text("Detecting your location...", style: TextStyle(color: Colors.grey)),
+                ]),
+              ),
             Row(children: [
               Expanded(
                   child: DropdownButtonFormField<String>(
                       isExpanded: true,
                       hint: const Text("City"),
+                      value: selectedCity,
                       items: locations.keys
-                          .map((c) => DropdownMenuItem(
-                          value: c,
-                          child: Text(c, style: const TextStyle(fontSize: 14))))
+                          .map((c) => DropdownMenuItem(value: c, child: Text(c, style: const TextStyle(fontSize: 14))))
                           .toList(),
-                      onChanged: (v) => setState(() {
-                        selectedCity = v;
-                        selectedDistrict = null;
-                      }),
+                      onChanged: (v) => setState(() { selectedCity = v; selectedDistrict = null; }),
                       decoration: const InputDecoration(border: OutlineInputBorder()))),
               const SizedBox(width: 10),
               Expanded(
@@ -181,12 +261,8 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
                       isExpanded: true,
                       hint: const Text("District"),
                       value: selectedDistrict,
-                      items: selectedCity == null
-                          ? []
-                          : locations[selectedCity]!
-                          .map((d) => DropdownMenuItem(
-                          value: d,
-                          child: Text(d, style: const TextStyle(fontSize: 14))))
+                      items: selectedCity == null ? [] : locations[selectedCity]!
+                          .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 14))))
                           .toList(),
                       onChanged: _onDistrictSelected,
                       decoration: const InputDecoration(border: OutlineInputBorder()))),
@@ -205,27 +281,22 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 10),
             Row(children: [
-              Expanded(
-                  child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.camera),
-                      icon: Icon(Icons.camera_alt, color: primaryTeal),
-                      label: Text("Camera", style: TextStyle(color: primaryTeal)))),
+              Expanded(child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: Icon(Icons.camera_alt, color: primaryTeal),
+                  label: Text("Camera", style: TextStyle(color: primaryTeal)))),
               const SizedBox(width: 10),
-              Expanded(
-                  child: OutlinedButton.icon(
-                      onPressed: () => _pickImage(ImageSource.gallery),
-                      icon: Icon(Icons.image, color: primaryTeal),
-                      label: Text("Gallery", style: TextStyle(color: primaryTeal)))),
+              Expanded(child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: Icon(Icons.image, color: primaryTeal),
+                  label: Text("Gallery", style: TextStyle(color: primaryTeal)))),
             ]),
             if (_imageFile != null)
               Padding(
                   padding: const EdgeInsets.only(top: 15),
                   child: ClipRRect(
                       borderRadius: BorderRadius.circular(10),
-                      child: Image.file(_imageFile!,
-                          height: 130,
-                          width: double.infinity,
-                          fit: BoxFit.cover))),
+                      child: Image.file(_imageFile!, height: 130, width: double.infinity, fit: BoxFit.cover))),
             const SizedBox(height: 40),
             Center(
               child: SizedBox(
@@ -236,14 +307,9 @@ class _RoadSuggestionsScreenState extends State<RoadSuggestionsScreen> {
                     : ElevatedButton(
                     style: ElevatedButton.styleFrom(
                         backgroundColor: primaryTeal,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30))),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
                     onPressed: _submitSuggestion,
-                    child: const Text("SUBMIT",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold))),
+                    child: const Text("SUBMIT", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
               ),
             ),
           ],

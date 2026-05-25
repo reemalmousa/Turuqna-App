@@ -3,8 +3,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math';
 
 class ReportScreen extends StatefulWidget {
   final String userId;
@@ -18,6 +20,7 @@ class _ReportScreenState extends State<ReportScreen> {
   final TextEditingController _descController = TextEditingController();
   File? _imageFile;
   bool _isLoading = false;
+  bool _isLocating = false;
   LatLng _selectedPos = const LatLng(26.4207, 50.0888);
   final MapController _mapController = MapController();
 
@@ -33,20 +36,17 @@ class _ReportScreenState extends State<ReportScreen> {
   };
 
   final Map<String, LatLng> districtCoordinates = {
-    // Dhahran
     "Doha":          LatLng(26.338399, 50.168036),
     "Al Dana":       LatLng(26.332489, 50.149309),
     "Al Qusur":      LatLng(26.346020, 50.152107),
     "West Dhahran":  LatLng(26.315038, 50.127842),
     "Ajyal":         LatLng(26.265744, 50.074363),
-    // Dammam
     "Al Shatea":     LatLng(26.478346, 50.129872),
     "Al Rayyan":     LatLng(26.413159, 50.092942),
     "Al Jamiyin":    LatLng(26.397849, 50.099695),
     "Al Faisaliyah": LatLng(26.396526, 50.071206),
     "Al Mazruiyah":  LatLng(26.448608, 50.119563),
     "Al Nuzha":      LatLng(26.401797, 50.109271),
-    // Khobar
     "Golden Belt":   LatLng(26.317119, 50.197037),
     "Al Buhairah":   LatLng(26.189997, 50.178769),
     "Corniche":      LatLng(26.332621, 50.239568),
@@ -54,6 +54,88 @@ class _ReportScreenState extends State<ReportScreen> {
     "Al Rakah":      LatLng(26.363909, 50.272146),
     "Al Tahliyah":   LatLng(26.189394, 50.197654),
   };
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto detect location when screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _detectLocation();
+    });
+  }
+
+  double _calculateDistance(LatLng a, LatLng b) {
+    const R = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * pi / 180;
+    final dLng = (b.longitude - a.longitude) * pi / 180;
+    final x = sin(dLat / 2) * sin(dLat / 2) +
+        cos(a.latitude * pi / 180) * cos(b.latitude * pi / 180) *
+            sin(dLng / 2) * sin(dLng / 2);
+    return R * 2 * atan2(sqrt(x), sqrt(1 - x));
+  }
+
+  void _findNearestDistrict(LatLng pos) {
+    String? nearestDistrict;
+    String? nearestCity;
+    double minDistance = double.infinity;
+
+    locations.forEach((city, districts) {
+      for (final district in districts) {
+        final districtPos = districtCoordinates[district];
+        if (districtPos != null) {
+          final distance = _calculateDistance(pos, districtPos);
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearestDistrict = district;
+            nearestCity = city;
+          }
+        }
+      }
+    });
+
+    if (nearestDistrict != null && nearestCity != null) {
+      setState(() {
+        selectedCity = nearestCity;
+        selectedDistrict = nearestDistrict;
+      });
+    }
+  }
+
+  Future<void> _detectLocation() async {
+    setState(() => _isLocating = true);
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+
+      if (permission == LocationPermission.deniedForever ||
+          permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Location permission denied")));
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      final currentPos = LatLng(position.latitude, position.longitude);
+
+      // 1. Move map first
+      setState(() => _selectedPos = currentPos);
+      _mapController.move(currentPos, 15.0);
+
+      // 2. Then fill dropdowns with nearest district
+      _findNearestDistrict(currentPos);
+
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Could not detect location")));
+    } finally {
+      setState(() => _isLocating = false);
+    }
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
@@ -119,7 +201,21 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(backgroundColor: primaryTeal, foregroundColor: Colors.white, title: const Text("New Report"), elevation: 0),
+      appBar: AppBar(
+        backgroundColor: primaryTeal,
+        foregroundColor: Colors.white,
+        title: const Text("New Report"),
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: _isLocating
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Icon(Icons.my_location),
+            onPressed: _isLocating ? null : _detectLocation,
+            tooltip: "Detect my location",
+          )
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(25.0),
         child: Column(
@@ -137,7 +233,10 @@ class _ReportScreenState extends State<ReportScreen> {
                   options: MapOptions(
                     initialCenter: _selectedPos,
                     initialZoom: 13.0,
-                    onTap: (tp, p) => setState(() => _selectedPos = p),
+                    onTap: (tp, p) {
+                      setState(() => _selectedPos = p);
+                      _findNearestDistrict(p);
+                    },
                   ),
                   children: [
                     TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.graduation.turuqna'),
@@ -148,10 +247,20 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
             ),
+            if (_isLocating)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 8),
+                  Text("Detecting your location...", style: TextStyle(color: Colors.grey)),
+                ]),
+              ),
             Row(children: [
               Expanded(
                 child: DropdownButtonFormField<String>(
                   hint: const Text("City"),
+                  value: selectedCity,
                   items: locations.keys.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                   onChanged: (v) => setState(() { selectedCity = v; selectedDistrict = null; }),
                   decoration: const InputDecoration(border: OutlineInputBorder()),
