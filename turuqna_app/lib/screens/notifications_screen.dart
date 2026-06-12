@@ -34,7 +34,7 @@ class NotificationsScreen extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.notifications_active,
                     color: Colors.orange),
-                title: const Text("System Update",
+                title: const Text("Report Update",
                     style: TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(snap.data![i]['content']),
                 trailing: Text(

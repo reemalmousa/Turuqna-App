@@ -26,7 +26,25 @@ class _SignupScreenState extends State<SignupScreen> {
   // --- THE REGISTRATION LOGIC ---
   Future<void> _register() async {
     // 1. Check all conditions (Email, Phone, Password)
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text("Incomplete Form"),
+          content: const Text(
+              "Please complete all required fields correctly."),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+
+      return;
+    }
 
     setState(() => _isLoading = true);
 
@@ -89,39 +107,67 @@ class _SignupScreenState extends State<SignupScreen> {
 
               // 1. Full Name
               _field(_nameController, "Full Name", Icons.person,
-                  (v) => v!.isEmpty ? "Required" : null),
+                      (v) => v == null || v.isEmpty ? "Full Name is required" : null),
 
-              // 2. Email (Strict Check)
+// 2. Email
               _field(_emailController, "Email Address", Icons.email, (v) {
-                final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                if (!emailRegex.hasMatch(v!))
-                  return "Enter a valid email (e.g. name@gmail.com)";
+                if (v == null || v.isEmpty) {
+                  return "Email is required";
+                }
+
+                final emailRegex =
+                RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+
+                if (!emailRegex.hasMatch(v)) {
+                  return "Enter a valid email";
+                }
+
                 return null;
               }, type: TextInputType.emailAddress),
 
-              // 3. Phone (10 digits starting with 05)
+// 3. Phone
               _field(_phoneController, "Phone (05xxxxxxxx)", Icons.phone, (v) {
-                if (v!.length != 10 || !v.startsWith("05"))
+                if (v == null || v.isEmpty) {
+                  return "Phone number is required";
+                }
+
+                if (v.length != 10 || !v.startsWith("05")) {
                   return "Must be 10 digits starting with 05";
+                }
+
                 return null;
               }, type: TextInputType.phone),
 
-              // 4. Strong Password (8+ chars, Upper, Lower, Number, Symbol)
+// 4. Password
               _field(_passController, "Password", Icons.lock, (v) {
+                if (v == null || v.isEmpty) {
+                  return "Password is required";
+                }
+
                 final passRegex = RegExp(
                     r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{8,}$');
-                if (!passRegex.hasMatch(v!)) {
-                  return "8+ chars: need Uppercase, Lowercase, Number & Symbol";
+
+                if (!passRegex.hasMatch(v)) {
+                  return "8+ chars: Upper, Lower, Number & Symbol";
                 }
+
                 return null;
               }, hide: true),
 
-              // 5. Confirm Password
+// 5. Confirm Password
               _field(_confirmPassController, "Confirm Password",
                   Icons.lock_outline, (v) {
-                if (v != _passController.text) return "Passwords do not match";
-                return null;
-              }, hide: true),
+
+                    if (v == null || v.isEmpty) {
+                      return "Please confirm password";
+                    }
+
+                    if (v != _passController.text) {
+                      return "Passwords do not match";
+                    }
+
+                    return null;
+                  }, hide: true),
 
               const SizedBox(height: 30),
 

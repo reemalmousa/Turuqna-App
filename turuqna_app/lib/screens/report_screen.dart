@@ -58,7 +58,6 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void initState() {
     super.initState();
-    // Auto detect location when screen opens
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _detectLocation();
     });
@@ -103,32 +102,23 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _detectLocation() async {
     setState(() => _isLocating = true);
-
     try {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-
       if (permission == LocationPermission.deniedForever ||
           permission == LocationPermission.denied) {
         ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text("Location permission denied")));
         return;
       }
-
       final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high);
-
       final currentPos = LatLng(position.latitude, position.longitude);
-
-      // 1. Move map first
       setState(() => _selectedPos = currentPos);
       _mapController.move(currentPos, 15.0);
-
-      // 2. Then fill dropdowns with nearest district
       _findNearestDistrict(currentPos);
-
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Could not detect location")));
@@ -153,8 +143,12 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Future<void> _submitReport() async {
-    if (_descController.text.isEmpty || _imageFile == null || selectedCity == null || selectedDistrict == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("All fields are required")));
+    if (_descController.text.isEmpty ||
+        _imageFile == null ||
+        selectedCity == null ||
+        selectedDistrict == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("All fields are required")));
       return;
     }
     setState(() => _isLoading = true);
@@ -163,26 +157,48 @@ class _ReportScreenState extends State<ReportScreen> {
       var request = http.MultipartRequest('POST', url);
       request.fields.addAll({
         "description": _descController.text,
-        "citizen_id": widget.userId,
-        "city": selectedCity!,
-        "district": selectedDistrict!,
-        "lat": _selectedPos.latitude.toString(),
-        "lng": _selectedPos.longitude.toString(),
+        "citizen_id":  widget.userId,
+        "city":        selectedCity!,
+        "district":    selectedDistrict!,
+        "lat":         _selectedPos.latitude.toString(),
+        "lng":         _selectedPos.longitude.toString(),
       });
-      request.files.add(await http.MultipartFile.fromPath('image', _imageFile!.path));
+      request.files.add(
+          await http.MultipartFile.fromPath('image', _imageFile!.path));
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
       var data = json.decode(response.body);
+
       if (data['status'] == "success") {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message']), backgroundColor: Colors.green));
-        Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(data['message']),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ));
+          Navigator.pop(context);
+        }
+      } else if (data['status'] == "refused") {
+        if (mounted) _showRejectionDialog(data['message']);
       } else {
-        _showRejectionDialog(data['message']);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(data['message'] ?? "Something went wrong."),
+            backgroundColor: Colors.orange,
+          ));
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Processing... wait 10 seconds and try again.")));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Connection error. Make sure XAMPP is running."),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -191,9 +207,15 @@ class _ReportScreenState extends State<ReportScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text("Submission Refused", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+        title: const Text("⚠️ Submission Refused",
+            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
         content: Text(message),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("OK — Upload a Different Photo"),
+          )
+        ],
       ),
     );
   }
@@ -209,7 +231,8 @@ class _ReportScreenState extends State<ReportScreen> {
         actions: [
           IconButton(
             icon: _isLocating
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                ? const SizedBox(width: 20, height: 20,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.my_location),
             onPressed: _isLocating ? null : _detectLocation,
             tooltip: "Detect my location",
@@ -221,11 +244,14 @@ class _ReportScreenState extends State<ReportScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("1. Tap map to set location:", style: TextStyle(fontWeight: FontWeight.bold)),
+            const Text("1. Tap map to set location:",
+                style: TextStyle(fontWeight: FontWeight.bold)),
             Container(
               height: 180,
               margin: const EdgeInsets.symmetric(vertical: 10),
-              decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(10)),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
                 child: FlutterMap(
@@ -239,9 +265,12 @@ class _ReportScreenState extends State<ReportScreen> {
                     },
                   ),
                   children: [
-                    TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.graduation.turuqna'),
+                    TileLayer(
+                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'com.graduation.turuqna'),
                     MarkerLayer(markers: [
-                      Marker(point: _selectedPos, child: const Icon(Icons.location_on, color: Colors.red, size: 35))
+                      Marker(point: _selectedPos,
+                          child: const Icon(Icons.location_on, color: Colors.red, size: 35))
                     ])
                   ],
                 ),
@@ -251,9 +280,11 @@ class _ReportScreenState extends State<ReportScreen> {
               const Padding(
                 padding: EdgeInsets.only(bottom: 8),
                 child: Row(children: [
-                  SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
                   SizedBox(width: 8),
-                  Text("Detecting your location...", style: TextStyle(color: Colors.grey)),
+                  Text("Detecting your location...",
+                      style: TextStyle(color: Colors.grey)),
                 ]),
               ),
             Row(children: [
@@ -261,8 +292,13 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: DropdownButtonFormField<String>(
                   hint: const Text("City"),
                   value: selectedCity,
-                  items: locations.keys.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                  onChanged: (v) => setState(() { selectedCity = v; selectedDistrict = null; }),
+                  items: locations.keys
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: (v) => setState(() {
+                    selectedCity = v;
+                    selectedDistrict = null;
+                  }),
                   decoration: const InputDecoration(border: OutlineInputBorder()),
                 ),
               ),
@@ -271,25 +307,43 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: DropdownButtonFormField<String>(
                   hint: const Text("District"),
                   value: selectedDistrict,
-                  items: selectedCity == null ? [] : locations[selectedCity]!.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                  items: selectedCity == null ? []
+                      : locations[selectedCity]!
+                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      .toList(),
                   onChanged: _onDistrictSelected,
                   decoration: const InputDecoration(border: OutlineInputBorder()),
                 ),
               ),
             ]),
             const SizedBox(height: 20),
-            const Text("2. Description:", style: TextStyle(fontWeight: FontWeight.bold)),
-            TextField(controller: _descController, maxLines: 3, decoration: const InputDecoration(hintText: "Describe the traffic situation...", border: OutlineInputBorder())),
+            const Text("2. Description:",
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            TextField(
+                controller: _descController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                    hintText: "Describe the traffic situation...",
+                    border: OutlineInputBorder())),
             const SizedBox(height: 20),
             Row(children: [
-              Expanded(child: OutlinedButton.icon(onPressed: () => _pickImage(ImageSource.camera), icon: Icon(Icons.camera_alt, color: primaryTeal), label: Text("Camera", style: TextStyle(color: primaryTeal)))),
+              Expanded(child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.camera),
+                  icon: Icon(Icons.camera_alt, color: primaryTeal),
+                  label: Text("Camera", style: TextStyle(color: primaryTeal)))),
               const SizedBox(width: 10),
-              Expanded(child: OutlinedButton.icon(onPressed: () => _pickImage(ImageSource.gallery), icon: Icon(Icons.image, color: primaryTeal), label: Text("Gallery", style: TextStyle(color: primaryTeal)))),
+              Expanded(child: OutlinedButton.icon(
+                  onPressed: () => _pickImage(ImageSource.gallery),
+                  icon: Icon(Icons.image, color: primaryTeal),
+                  label: Text("Gallery", style: TextStyle(color: primaryTeal)))),
             ]),
             if (_imageFile != null)
               Padding(
                 padding: const EdgeInsets.only(top: 15),
-                child: ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(_imageFile!, height: 130, width: double.infinity, fit: BoxFit.cover)),
+                child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(_imageFile!, height: 130,
+                        width: double.infinity, fit: BoxFit.cover)),
               ),
             const SizedBox(height: 40),
             Center(
@@ -297,14 +351,25 @@ class _ReportScreenState extends State<ReportScreen> {
                 width: 250,
                 height: 65,
                 child: _isLoading
-                    ? Column(children: [CircularProgressIndicator(color: primaryTeal), const Text("AI Scanning...", style: TextStyle(fontSize: 10))])
+                    ? Column(children: [
+                  CircularProgressIndicator(color: primaryTeal),
+                  const SizedBox(height: 8),
+                  const Text("AI Scanning your image...",
+                      style: TextStyle(fontSize: 12, color: Colors.grey))
+                ])
                     : ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: primaryTeal, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30))),
+                  style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryTeal,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30))),
                   onPressed: _submitReport,
-                  child: const Text("SUBMIT REPORT", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  child: const Text("SUBMIT REPORT",
+                      style: TextStyle(color: Colors.white,
+                          fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

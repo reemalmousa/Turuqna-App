@@ -3,6 +3,8 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'map_screen.dart';
 import 'signup_screen.dart';
+import 'forgot_password_screen.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_email.text.isEmpty || _pass.text.isEmpty) return;
     setState(() => _loading = true);
     try {
+
       var url = Uri.parse("http://10.0.2.2:8080/turuqna_api/api_login.php");
       var res = await http
           .post(url, body: {"email": _email.text, "password": _pass.text});
@@ -66,13 +69,33 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: const InputDecoration(
                     labelText: "Email", border: OutlineInputBorder())),
             const SizedBox(height: 15),
+
             TextField(
                 controller: _pass,
                 obscureText: true,
                 decoration: const InputDecoration(
-                    labelText: "Password", border: OutlineInputBorder())),
-            const SizedBox(height: 30),
+                    labelText: "Password",
+                    border: OutlineInputBorder())),
+
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                      const ForgotPasswordScreen(),
+                    ),
+                  );
+                },
+                child: const Text("Forgot Password?"),
+              ),
+            ),
+
+            const SizedBox(height: 15),
             _loading
+
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
                     onPressed: _login,

@@ -41,6 +41,9 @@ class _MapScreenState extends State<MapScreen> {
 
       final Position pos = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+      ).timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => throw Exception("GPS timeout"),
       );
 
       final newLocation = LatLng(pos.latitude, pos.longitude);
